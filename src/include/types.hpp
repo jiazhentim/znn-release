@@ -116,7 +116,7 @@ struct unique_ptr_deleter
     {
         allocator<T> alloc;
         alloc.destroy(p);
-        alloc.deallocate(p);
+        alloc.deallocate(p, 1);
     }
 };
 

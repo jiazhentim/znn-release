@@ -83,12 +83,13 @@ int main(int argc, char** argv)
 
     if ( argc >= 10 )
     {
-        max_threads = atoi(argv[0]);
+        max_threads = atoi(argv[9]);
     }
 
     std::vector<double> speeds(max_threads+1);
 
-    for ( int i = 1; i <= max_threads; ++i )
+    for ( int i = 1;; i = i * 2 > max_threads ?
+            max_threads : i * 2)
     {
         auto res = parallel_network::network::speed_test
             (nodes, edges, {z,y,x}, i, nrnds, warmup);
@@ -104,5 +105,6 @@ int main(int argc, char** argv)
                   << " ( " << ( res.second * 100  / res.first ) << "% )"
                   << ";" << std::endl
                   << "____SPEEDUP: " << ( speeds[1] / speeds[i] ) << std::endl;
+        if (i == max_threads) break;
     }
 }

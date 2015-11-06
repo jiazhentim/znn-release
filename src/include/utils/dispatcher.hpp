@@ -144,7 +144,10 @@ private:
         ccube_p<complex> x = fftw_[s]->forward_pad(v);
         for ( auto& t: targets )
         {
-            manager.schedule(t->fwd_priority(), [t,x](){t->forward(x);});
+            auto closure = [t,x](){t->forward(x);};
+            auto fn = znn::v4::make_unique<callable>(std::move(closure),
+                                                     "", bytesize(*x));
+            manager.schedule(t->fwd_priority(), std::move(fn), nullptr);
         }
     }
 
@@ -152,12 +155,22 @@ public:
     void dispatch( ccube_p<real> const & v,
                    task_manager & manager)
     {
-        for ( auto& t: targets_ )
-            manager.schedule(t->fwd_priority(), [t,v](){t->forward(v);});
+      for ( auto& t: targets_ ) {
+        auto closure = [t,v](){t->forward(v);};
+        auto fn = znn::v4::make_unique<callable>(std::move(closure),
+                                                 "", bytesize(*v));
+        manager.schedule(t->fwd_priority(), std::move(fn), nullptr);
+      }
 
-        for ( auto& fft_target: fft_targets_ )
-            manager.asap(&this_type::fft_dispatch,this,v,fft_target.first,
-                         std::cref(fft_target.second), std::ref(manager));
+      for (auto& fft_target: fft_targets_) {
+        auto closure = std::bind(&this_type::fft_dispatch, this, v,
+                                 fft_target.first,
+                                 std::cref(fft_target.second),
+                                 std::ref(manager));
+        auto fn = znn::v4::make_unique<callable>(std::move(closure),
+                                                 "", bytesize(*v));
+        manager.schedule(INT_MAX, std::move(fn), nullptr);
+      }
     }
 
     void sign_up(Edge* e)
@@ -200,19 +213,32 @@ private:
 
         for ( auto& t: targets )
         {
-            manager.schedule(t->bwd_priority(), [t,x](){t->backward(x);});
+            auto closure = [t,x](){t->backward(x);};
+            auto fn = znn::v4::make_unique<callable>(std::move(closure),
+                                                     "", bytesize(*x));
+            manager.schedule(t->bwd_priority(), std::move(fn), nullptr);
         }
     }
 
 public:
     void dispatch(const ccube_p<real>& v, task_manager& manager)
     {
-        for ( auto& t: targets_ )
-            manager.schedule(t->bwd_priority(), [t,v](){t->backward(v);});
+      for ( auto& t: targets_ ) {
+        auto closure = [t,v](){t->backward(v);};
+        auto fn = znn::v4::make_unique<callable>(std::move(closure),
+                                                 "", bytesize(*v));
+        manager.schedule(t->bwd_priority(), std::move(fn), nullptr);
+      }
 
-        for ( auto& fft_target: fft_targets_ )
-            manager.asap(&this_type::fft_dispatch,this,v,fft_target.first,
-                         std::cref(fft_target.second), std::ref(manager));
+      for (auto& fft_target: fft_targets_) {
+        auto closure = std::bind(&this_type::fft_dispatch, this, v,
+                                 fft_target.first,
+                                 std::cref(fft_target.second),
+                                 std::ref(manager));
+        auto fn = znn::v4::make_unique<callable>(std::move(closure),
+                                                 "", bytesize(*v));
+        manager.schedule(INT_MAX, std::move(fn), nullptr);
+      }
     }
 
     void sign_up(Edge* e)

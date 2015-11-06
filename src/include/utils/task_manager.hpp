@@ -30,187 +30,128 @@
 #include <iostream>
 #include <limits>
 #include <utility>
+#include <vector>
 
 #include <zi/utility/singleton.hpp>
 #include <zi/time.hpp>
-//#include <boost/pool/pool_alloc.hpp>
 
-#include "log.hpp"
-#include "global_task_manager.hpp"
+#include "callable.hpp"
+#include "scheduling_policy.hpp"
+#include "../types.hpp"
 
-#ifdef ZNN_DFS_TASK_SCHEDULER
-#  include "dfs_task_manager.hpp"
-#else
+namespace znn {
+namespace v4 {
 
-namespace znn { namespace v4 {
-
-namespace detail {
-
-class function_base
-{
-public:
-    virtual ~function_base() {}
-    virtual void operator()() = 0;
-};
-
-template<typename T>
-class function_wrapper: function_base
-{
-private:
-    T t_;
-public:
-    function_wrapper(T && t): t_(t) {};
-    function_wrapper(T const &) = delete;
-};
-
-
-
-} // namespace detail
-
-class task_manager
-{
-private:
-    typedef std::function<void()> callable_t;
-
-private:
-    struct unprivileged_task
-    {
+  // task_manager accepts generic scheduling policies and lets waiting
+  // threads steal tasks as well.
+  //
+  // Class is thread-safe.
+  class task_manager {
+  private:
+    // We use atomic booleans to transparently mark tombstone tasks,
+    // or tasks that are stolen by external threads.
+    class task : public scheduling_policy::task {
     private:
-        std::function<void()>  fn_               ;
-        callable_t*            then_   = nullptr ;
-        int                    status_ = 1       ;
-
-        list<std::shared_ptr<unprivileged_task>>::iterator it_;
-
-        friend class task_manager;
+      // Invariants:
+      //   callable_ valid iff !has_started_
+      //   has_started_ ==> has_finished_
+      unique_ptr<callable> callable_;
+      std::atomic<bool> has_started_;
+      std::atomic<bool> has_finished_;
 
     public:
-        template<class... Args>
-        explicit unprivileged_task(Args&&... args)
-            : fn_(std::bind(std::forward<Args>(args)...))
-        {}
+      task(unique_ptr<callable> c)
+        : callable_(std::move(c))
+        , has_started_(false)
+        , has_finished_(false) {
+        auto oldf = std::move(callable_->closure_);
+        callable_->closure_ = [f = std::move(oldf), this]() {
+          f();
+          has_finished_.store(true);
+        };
+      }
+
+      // Caller responsible for evaluating the function while this is still in
+      // scope.
+      unique_ptr<callable> get() {
+        if (has_started_.exchange(true)) return nullptr;
+        return std::move(callable_);
+      }
+
+      std::size_t memsize() override {
+        if (has_started_.load()) return 0;
+        return callable_->memsize_;
+      }
+
+      void finish() {
+        // In the unlikely event we caught the thread in the middle of the
+        // computation, yield.
+        while (!has_finished_.load()) std::this_thread::yield();
+        // TODO smarter dependencies (mutex/cond var),
+        // or provide api task_manager support for it.
+      }
     };
 
-public:
-    typedef std::shared_ptr<unprivileged_task> task_handle;
+  public:
+    typedef std::shared_ptr<task> task_handle;
 
-private:
-    map<std::size_t, list<callable_t*>> tasks_                  ;
-    size_t                                       tot_tasks_ = 0 ;
-    list<task_handle>                            unprivileged_  ;
-
+  private:
     std::size_t spawned_threads_;
     std::size_t concurrency_    ;
     std::size_t idle_threads_   ;
 
-    std::mutex              mutex_;
-    std::condition_variable manager_cv_;
+    // Coarse-grained class mutex
+    std::mutex mutex_;
+
+    // Waiting condition for the workers, that there is work to do.
     std::condition_variable workers_cv_;
 
-private:
-    void worker_loop()
-    {
+    std::unique_ptr<scheduling_policy> policy_;
+    std::vector<std::thread> threads_;
+
+  private:
+    void worker_loop(std::size_t tid) {
+      {
+        std::lock_guard<std::mutex> g(mutex_);
+        ZI_ASSERT(spawned_threads_ < concurrency_);
+        ++spawned_threads_;
+      }
+
+      while (true) {
+        std::shared_ptr<scheduling_policy::task> f;
         {
-            std::lock_guard<std::mutex> g(mutex_);
+          std::unique_lock<std::mutex> g(mutex_);
+          ++idle_threads_;
+          workers_cv_.wait(g, [&]() {
+              policy_->get_next(tid, &f);
+              bool shutting_down = concurrency_ < spawned_threads_;
+              return f || shutting_down;
+            });
+          --idle_threads_;
 
-            if ( spawned_threads_ >= concurrency_ )
-            {
-                return;
-            }
-
-            ++spawned_threads_;
-            if ( spawned_threads_ == concurrency_ )
-            {
-                manager_cv_.notify_all();
-            }
+          if (!f) {
+            --spawned_threads_;
+            return;
+          }
         }
 
-        task_handle f2;
-
-        while (true)
-        {
-            callable_t* f1 = nullptr;
-
-            {
-                std::unique_lock<std::mutex> g(mutex_);
-
-                while ( tasks_.empty() &&
-                        unprivileged_.empty() &&
-                        concurrency_ >= spawned_threads_ )
-                {
-                    ++idle_threads_;
-                    workers_cv_.wait(g);
-                    --idle_threads_;
-                }
-
-                if ( tasks_.empty() && unprivileged_.empty() )
-                {
-                    --spawned_threads_;
-                    if ( spawned_threads_ == concurrency_ )
-                    {
-                        manager_cv_.notify_all();
-                    }
-                    return;
-                }
-
-                if ( tasks_.size() )
-                {
-                    f1 = next_task();
-                }
-                else
-                {
-                    f1 = nullptr;
-                    f2 = next_unprivileged_task();
-                }
-
-            }
-
-            if ( f1 )
-            {
-                (*f1)();
-                allocator<callable_t> alloc;
-                alloc.destroy(f1);
-                alloc.deallocate(f1,1);
-            }
-            else
-            {
-                execute_unprivileged_task(f2);
-            }
-        }
+        auto t = static_cast<task*>(f.get())->get();
+        if (t) t->closure_();
+      }
     }
 
-private:
-    // executing in one of the manaer's threads
-    void execute_unprivileged_task(task_handle const & t)
-    {
-        t->fn_();
-        t->fn_ = nullptr;
+  public:
+    task_manager(std::unique_ptr<scheduling_policy> policy)
+      : spawned_threads_{0}
+      , concurrency_{0}
+      , idle_threads_{0}
+      , policy_(std::move(policy)) {
+        concurrency_ = policy_->concurrency();
 
-        callable_t* after = nullptr;
-
-        {
-            std::unique_lock<std::mutex> g(mutex_);
-            after      = t->then_;
-            t->status_ = 0;
+        for (std::size_t i = 0; i < concurrency_; ++i) {
+          threads_.emplace_back(&task_manager::worker_loop, this, i);
         }
-
-        if ( after )
-        {
-            (*after)();
-            allocator<callable_t> alloc;
-            alloc.destroy(after);
-            alloc.deallocate(after,1);
-        }
-    }
-
-public:
-    task_manager(std::size_t concurrency = std::thread::hardware_concurrency())
-        : spawned_threads_{0}
-        , concurrency_{0}
-        , idle_threads_{0}
-    {
-        set_concurrency(concurrency);
-    }
+      }
 
     task_manager(const task_manager&) = delete;
     task_manager& operator=(const task_manager&) = delete;
@@ -218,175 +159,75 @@ public:
     task_manager(task_manager&& other) = delete;
     task_manager& operator=(task_manager&&) = delete;
 
-    ~task_manager()
-    {
-        set_concurrency(0);
-    }
-
-    std::size_t set_concurrency(std::size_t n)
-    {
-        std::unique_lock<std::mutex> g(mutex_);
-
-        if ( concurrency_ != spawned_threads_ )
-        {
-            return concurrency_;
-        }
-
-        std::size_t to_spawn = (n > concurrency_) ? ( n - concurrency_ ) : 0;
-        concurrency_ = n;
-
-        for ( std::size_t i = 0; i < to_spawn; ++i )
-        {
-            //std::thread t(&task_manager::worker_loop, this);
-            //t.detach();
-            global_task_manager.schedule(&task_manager::worker_loop, this);
-        }
-
+    ~task_manager() {
+      {
+        std::lock_guard<std::mutex> g(mutex_);
+        concurrency_ = 0;
         workers_cv_.notify_all();
-
-        while ( concurrency_ != spawned_threads_ )
-        {
-            manager_cv_.wait(g);
-        }
-
-        return concurrency_;
+      }
+      for (auto& t : threads_) t.join();
     }
 
-    std::size_t get_concurrency()
-    {
-        std::lock_guard<std::mutex> g(mutex_);
-        return concurrency_;
+    std::size_t get_concurrency() {
+      std::lock_guard<std::mutex> g(mutex_);
+      return concurrency_;
     }
 
-    std::size_t idle_threads()
-    {
-        std::lock_guard<std::mutex> g(mutex_);
-        return idle_threads_;
+    std::size_t idle_threads() {
+      std::lock_guard<std::mutex> g(mutex_);
+      return idle_threads_;
     }
 
-    std::size_t active_threads()
-    {
-        std::lock_guard<std::mutex> g(mutex_);
-        return concurrency_ - idle_threads_;
+    std::size_t active_threads() {
+      std::lock_guard<std::mutex> g(mutex_);
+      return concurrency_ - idle_threads_;
     }
 
-private:
-    callable_t* next_task()
-    {
-        callable_t* f = tasks_.rbegin()->second.front();
-
-        tasks_.rbegin()->second.pop_front();
-        if ( tasks_.rbegin()->second.size() == 0 )
-        {
-            tasks_.erase(tasks_.rbegin()->first);
-        }
-
-        --tot_tasks_;
-        // LOG(info) << tot_tasks_
-        //           << ", " << unprivileged_.size() << ";";
-
-        return f;
+  public:
+    // The parameter callable must have a valid closure.
+    // Additional callable fields only need to be filled in if the
+    // manager's policy requires it.
+    //
+    // If out parameter pointer-to-shared-pointer is not null, saves
+    // the handle there.
+    void schedule(int priority, unique_ptr<callable> fn,
+                  task_handle* out) {
+      task_handle handle(new task(std::move(fn)));
+      if (out) *out = handle;
+      std::lock_guard<std::mutex> g(mutex_);
+      policy_->schedule(priority, std::move(handle));
+      if (idle_threads_ > 0) workers_cv_.notify_one();
     }
 
-    task_handle next_unprivileged_task()
-    {
-        auto x = unprivileged_.front();
-        x->status_ = 2;
-        unprivileged_.pop_front();
-        return x;
+    // Appends a task to 'out' if not yet done; otherwise
+    // this behaves like schedule on the given callable.
+    //
+    // 'out' may be modifited to be the new task.
+    void schedule_after(int priority, unique_ptr<callable> fn,
+                        task_handle* out) {
+      // TODO(vlad17): try rewriting the lambda (and do an atomic swap)
+      // to simply concatenate the two operations.
+      // TODO(vlad17): linked list of tasks
+      if (!*out) {
+        schedule(priority, std::move(fn), out);
+        return;
+      }
+      require_done(*out);
+      schedule(priority, std::move(fn), out);
     }
 
-public:
-    template<typename... Args>
-    void schedule(std::size_t priority, Args&&... args)
-    {
-        allocator<callable_t> alloc;
-        callable_t* fn = alloc.allocate(1);
-        alloc.construct(fn, std::bind(std::forward<Args>(args)...));
-        {
-            std::lock_guard<std::mutex> g(mutex_);
-            tasks_[priority].emplace_front(fn);
-            ++tot_tasks_;
-            if ( idle_threads_ > 0 ) workers_cv_.notify_one();
-        }
+    // Steals task if not being executed.
+    void require_done(const task_handle& t) {
+      if (!t) return;
+
+      auto fn = t->get();
+      if (fn) {
+        fn->closure_();
+      } else {
+        t->finish();
+      }
     }
+  }; // class task_manager
 
-    template<typename... Args>
-    void asap(Args&&... args)
-    {
-        allocator<callable_t> alloc;
-        callable_t* fn = alloc.allocate(1);
-        alloc.construct(fn, std::bind(std::forward<Args>(args)...));
-        {
-            std::lock_guard<std::mutex> g(mutex_);
-            tasks_[std::numeric_limits<std::size_t>::max()].emplace_front(fn);
-            ++tot_tasks_;
-            if ( idle_threads_ > 0 ) workers_cv_.notify_one();
-        }
-    }
-
-    template<typename... Args>
-    void require_done(task_handle const & t, Args&&... args)
-    {
-        // doesn't exist!
-        if ( !t )
-        {
-            std::bind(std::forward<Args>(args)...)();
-            return;
-        }
-
-        bool stolen = false;
-
-        {
-            std::lock_guard<std::mutex> g(mutex_);
-
-            if ( t->status_ == 1 )
-            {
-                unprivileged_.erase(t->it_);
-                stolen = true;
-                t->status_ = 0;
-            }
-            else
-            {
-                if ( t->status_ == 2 )
-                {
-                    ZI_ASSERT(t->then_==nullptr);
-                    allocator<callable_t> alloc;
-                    t->then_ = alloc.allocate(1);
-                    alloc.construct(t->then_,
-                                    std::bind(std::forward<Args>(args)...));
-                    return;
-                }
-            }
-        }
-
-        if ( stolen )
-        {
-            t->fn_();
-            t->fn_ = nullptr;
-        }
-
-        std::bind(std::forward<Args>(args)...)();
-    }
-
-
-    template<typename... Args>
-    task_handle schedule_unprivileged(Args&&... args)
-    {
-        task_handle t = std::allocate_shared<unprivileged_task>
-            (allocator<unprivileged_task>(), std::forward<Args>(args)...);
-        {
-            std::lock_guard<std::mutex> g(mutex_);
-            unprivileged_.push_front(t);
-            t->it_ = unprivileged_.begin();
-            if ( idle_threads_ > 0 ) workers_cv_.notify_one();
-        }
-        return t;
-    }
-
-}; // class task_manager
-
-
-}} // namespace znn::v4
-
-#endif
+}  // namespace v4
+}  // namespace znn

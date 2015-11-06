@@ -73,7 +73,8 @@ public:
 
     void forward( ccube_p<real> const & f ) override
     {
-        manager.require_done( pending_, &filter_ds_edge::do_forward, this, f );
+        manager.require_done(pending_);
+        do_forward(f);
     }
 
     void backward( ccube_p<real> const & g )
@@ -83,16 +84,17 @@ public:
                            convolve_sparse_inverse(*g,
                                                    filter_.W(),
                                                    filter_stride));
-
-        pending_
-            = manager.schedule_unprivileged(&filter_ds_edge::do_update, this, g);
+        auto closure = std::bind(&filter_ds_edge::do_update, this, g);
+        auto fn = znn::v4::make_unique<callable>(std::move(closure),
+                                                 "", bytesize(*g));
+        manager.schedule(-static_cast<int>(fwd_priority_),
+                         std::move(fn), &pending_);
     }
 
     void zap(edges* e)
     {
-        // guard gg(m);
-        manager.require_done(pending_,&edges::edge_zapped,e);
-        //e->edge_zapped();
+        manager.require_done(pending_);
+        e->edge_zapped();
     }
 };
 

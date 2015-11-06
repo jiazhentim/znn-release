@@ -28,6 +28,11 @@
 
 namespace znn { namespace v4 {
 
+template<class T>
+std::size_t bytesize(const cube<T>& c) {
+  return c.num_elements() * sizeof (T);
+}
+
 template< class T, class CharT, class Traits >
 std::basic_ostream< CharT, Traits >&
 operator<<( ::std::basic_ostream< CharT, Traits >& os,

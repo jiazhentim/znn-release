@@ -115,13 +115,17 @@ public:
         flatten(filter_.W(), repeat_);
 
 #ifndef ZNN_DONT_CACHE_FFTS
-        pending_ = manager.schedule_unprivileged(&fft_filter_ds_edge::initialize,this);
+        auto sz = in->size() * sizeof(complex);
+        auto closure = std::bind(&fft_filter_ds_edge::initialize, this);
+        auto fn = znn::v4::make_unique<callable>(std::move(closure), "", sz);
+        manager.schedule(fwd_priority_, std::move(fn), &pending_);
 #endif
     }
 
     void forward( ccube_p<complex> const & f ) override
     {
-        manager.require_done( pending_, &fft_filter_ds_edge::do_forward, this, f );
+        manager.require_done(pending_);
+        do_forward(f);
     }
 
     void backward( ccube_p<complex> const & g )
@@ -141,13 +145,17 @@ public:
             in_nodes->backward(in_num, bwd_bucket_, std::move(grad));
         }
 
-        pending_
-            = manager.schedule_unprivileged(&fft_filter_ds_edge::do_update, this, g);
+        auto closure = std::bind(&fft_filter_ds_edge::do_update, this, g);
+        auto fn = znn::v4::make_unique<callable>(std::move(closure),
+                                                 "", bytesize(*g));
+        manager.schedule(-static_cast<int>(fwd_priority_),
+                         std::move(fn), &pending_);
     }
 
     void zap(edges* e)
     {
-        manager.require_done(pending_,&edges::edge_zapped,e);
+        manager.require_done(pending_);
+        e->edge_zapped();
     }
 };
 

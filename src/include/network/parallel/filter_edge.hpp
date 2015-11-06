@@ -66,7 +66,9 @@ public:
 
     void forward( ccube_p<real> const & f ) override
     {
-        manager.require_done( pending_, &filter_edge::do_forward, this, f );
+        auto closure = std::bind(&filter_edge::do_forward, this, f);
+        auto fn = znn::v4::make_unique<callable>(std::move(closure), "", bytesize(*f));
+        manager.schedule_after(fwd_priority_, std::move(fn), &pending_);
     }
 
     void backward( ccube_p<real> const & g )
@@ -84,15 +86,17 @@ public:
                                                        filter_stride));
         }
 
-        pending_
-            = manager.schedule_unprivileged(&filter_edge::do_update, this, g);
+        auto closure = std::bind(&filter_edge::do_update, this, g);
+        auto fn = znn::v4::make_unique<callable>(std::move(closure),
+                                                 "", bytesize(*g));
+        manager.schedule(-static_cast<int>(fwd_priority_),
+                         std::move(fn), &pending_);
     }
 
     void zap(edges* e)
     {
-        // guard gg(m);
-        manager.require_done(pending_,&edges::edge_zapped,e);
-        //e->edge_zapped();
+        manager.require_done(pending_);
+        e->edge_zapped();
     }
 };
 

@@ -18,6 +18,7 @@
 #pragma once
 
 #include "../../utils/simple_accumulator.hpp"
+#include "../../cube/cube_operators.hpp"
 #include "edges_fwd.hpp"
 #include "nodes.hpp"
 
@@ -47,9 +48,10 @@ public:
                 auto sum = accum_.reset();
                 for ( auto & e: edges_ )
                 {
-                    tm_.schedule(e->fwd_priority(), [e,sum]() {
-                            e->shoot(sum);
-                        });
+                  auto closure = [e,sum]() { e->shoot(sum); };
+                  auto fn = make_unique<callable>(
+                    std::move(closure), "", bytesize(*f));
+                  tm_.schedule(e->fwd_priority(), std::move(fn), nullptr);
                 }
             }
         }

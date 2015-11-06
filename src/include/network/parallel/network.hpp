@@ -22,6 +22,13 @@
 #include "input_nodes.hpp"
 #include "transfer_nodes.hpp"
 #include "../../initializator/initializators.hpp"
+#ifndef ZNN_DFS_TASK_SCHEDULER
+#include "../../utils/priority_policy.hpp"
+typedef znn::v4::priority_policy policy;
+#else
+#include "../../utils/dfs_policy.hpp"
+typedef znn::v4::dfs_policy policy;
+#endif
 #include "../helpers.hpp"
 
 #include <map>
@@ -400,7 +407,7 @@ public:
              std::vector<options> const & es,
              vec3i const & outsz,
              size_t n_threads = 1 )
-        : tm_(n_threads)
+        : tm_(std::make_unique<policy>(n_threads))
     {
         for ( auto& n: ns ) add_nodes(n);
         for ( auto& e: es ) add_edges(e);
