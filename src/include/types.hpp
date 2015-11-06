@@ -106,7 +106,6 @@ using vector = std::vector<T,allocator<T>>;
 template<class T>
 using list = std::list<T,allocator<T>>;
 
-
 template<class T>
 struct unique_ptr_deleter
 {
@@ -132,5 +131,14 @@ unique_ptr<T> make_unique(Args&&... args)
     return unique_ptr<T>(p);
 }
 
+template<typename T, typename... Args>
+std::shared_ptr<T> zmake_shared(Args&&... args)
+{
+    allocator<T> alloc;
+    T* p = alloc.allocate(1);
+    alloc.construct(p, std::forward<Args>(args)...);
+    unique_ptr_deleter<T> d;
+    return std::shared_ptr<T>(p, d);
+}
 
 }} // namespace znn::v4

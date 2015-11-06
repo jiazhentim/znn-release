@@ -192,7 +192,7 @@ namespace v4 {
     // the handle there.
     void schedule(int priority, unique_ptr<callable> fn,
                   task_handle* out) {
-      task_handle handle(new task(std::move(fn)));
+      auto handle = zmake_shared<task>(std::move(fn));
       if (out) *out = handle;
       std::lock_guard<std::mutex> g(mutex_);
       policy_->schedule(priority, std::move(handle));

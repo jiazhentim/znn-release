@@ -54,8 +54,8 @@ public:
   }
 
 private:
-  // TODO(vlad17): queue instead?
-  map<int, std::stack<std::shared_ptr<task>>> tasks_;
+  map<int, std::stack<std::shared_ptr<task>,
+                      vector<std::shared_ptr<task>>>> tasks_;
 };
 
 }  // namespace v4
