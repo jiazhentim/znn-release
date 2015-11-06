@@ -199,23 +199,6 @@ namespace v4 {
       if (idle_threads_ > 0) workers_cv_.notify_one();
     }
 
-    // Appends a task to 'out' if not yet done; otherwise
-    // this behaves like schedule on the given callable.
-    //
-    // 'out' may be modifited to be the new task.
-    void schedule_after(int priority, unique_ptr<callable> fn,
-                        task_handle* out) {
-      // TODO(vlad17): try rewriting the lambda (and do an atomic swap)
-      // to simply concatenate the two operations.
-      // TODO(vlad17): linked list of tasks
-      if (!*out) {
-        schedule(priority, std::move(fn), out);
-        return;
-      }
-      require_done(*out);
-      schedule(priority, std::move(fn), out);
-    }
-
     // Steals task if not being executed.
     void require_done(const task_handle& t) {
       if (!t) return;

@@ -66,9 +66,8 @@ public:
 
     void forward( ccube_p<real> const & f ) override
     {
-        auto closure = std::bind(&filter_edge::do_forward, this, f);
-        auto fn = znn::v4::make_unique<callable>(std::move(closure), "", bytesize(*f));
-        manager.schedule_after(fwd_priority_, std::move(fn), &pending_);
+        manager.require_done(pending_);
+        do_forward(f);
     }
 
     void backward( ccube_p<real> const & g )
