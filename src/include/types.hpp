@@ -31,7 +31,6 @@
 #include <list>
 #include <vector>
 
-
 #if ( __cplusplus <= 201103L )
 
 namespace std {
@@ -99,6 +98,9 @@ struct vec_hash<zi::vl::vec<T,N>>
 
 template<class K, class V>
 using map = std::map<K,V,std::less<K>,allocator<std::pair<const K,V>>>;
+
+template<class K, class V>
+using multimap = std::multimap<K,V,std::less<K>,allocator<std::pair<const K,V>>>;
 
 template<class T>
 using vector = std::vector<T,allocator<T>>;

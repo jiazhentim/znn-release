@@ -51,13 +51,17 @@ public:
   void get_next(std::size_t tid, std::shared_ptr<task>* t) override {
     tid_ = tid;
 
-    if (globals_.empty()) return;
-
-    auto reg_task = !locals_[tid_].empty() ?
-      locals_[tid_].begin() : globals_.front();
-    *t = std::move(reg_task->task_);
-    globals_.erase(reg_task->global_list_it_);
-    locals_[reg_task->owner_tid_].erase(reg_task);
+    do {
+      if (globals_.empty()) {
+          *t = nullptr;
+          return;
+      }
+      auto reg_task = !locals_[tid_].empty() ?
+          locals_[tid_].begin() : globals_.front();
+      *t = std::move(reg_task->task_);
+      globals_.erase(reg_task->global_list_it_);
+      locals_[reg_task->owner_tid_].erase(reg_task);
+    } while (!(*t)->valid());
   }
 
 private:

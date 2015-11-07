@@ -50,6 +50,8 @@ namespace v4 {
   private:
     // We use atomic booleans to transparently mark tombstone tasks,
     // or tasks that are stolen by external threads.
+    //
+    // Thread-safe.
     class task : public scheduling_policy::task {
     private:
       // Invariants:
@@ -64,15 +66,17 @@ namespace v4 {
         : callable_(std::move(c))
         , has_started_(false)
         , has_finished_(false) {
-        auto oldf = std::move(callable_->closure_);
-        callable_->closure_ = [f = std::move(oldf), this]() {
-          f();
-          has_finished_.store(true);
-        };
       }
 
+      // Should be called externally after caller runs get()
+      void notify_finished() {
+          has_finished_.store(true);
+      }
+
+      bool valid() const override { return !has_started_.load(); }
+
       // Caller responsible for evaluating the function while this is still in
-      // scope.
+      // scope. Returns nullptr if not valid.
       unique_ptr<callable> get() {
         if (has_started_.exchange(true)) return nullptr;
         return std::move(callable_);
@@ -135,8 +139,13 @@ namespace v4 {
           }
         }
 
-        auto t = static_cast<task*>(f.get())->get();
-        if (t) t->closure_();
+        auto t = static_cast<task*>(f.get());
+        auto fn = t->get();
+        if (fn) {
+            fn->closure_();
+            t->notify_finished();
+        }
+        policy_->notify_finished(tid);
       }
     }
 
@@ -203,11 +212,11 @@ namespace v4 {
     void require_done(const task_handle& t) {
       if (!t) return;
 
-      auto fn = t->get();
-      if (fn) {
-        fn->closure_();
+      if (t->valid()) {
+          t->get()->closure_();
+          t->notify_finished();
       } else {
-        t->finish();
+          t->finish();
       }
     }
   }; // class task_manager

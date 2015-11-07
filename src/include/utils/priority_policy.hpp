@@ -43,14 +43,18 @@ public:
   }
 
   void get_next(std::size_t /*tid*/, std::shared_ptr<task>* t) override {
-    if (tasks_.empty()) return;
-
-    auto& top_stack = tasks_.rbegin()->second;
-    *t = std::move(top_stack.top());
-    top_stack.pop();
-    if (top_stack.empty()) {
-      tasks_.erase(tasks_.rbegin()->first);
-    }
+    do {
+      if (tasks_.empty()) {
+          *t = nullptr;
+          return;
+      }
+      auto& top_stack = tasks_.rbegin()->second;
+      *t = std::move(top_stack.top());
+      top_stack.pop();
+      if (top_stack.empty()) {
+        tasks_.erase(tasks_.rbegin()->first);
+      }
+    } while (!(*t)->valid());
   }
 
 private:
