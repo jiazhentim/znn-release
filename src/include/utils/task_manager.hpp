@@ -133,7 +133,7 @@ namespace v4 {
             });
           --idle_threads_;
 
-          if (!f) {
+          if (concurrency_ < spawned_threads_) {
             --spawned_threads_;
             return;
           }
@@ -145,7 +145,11 @@ namespace v4 {
             fn->closure_();
             t->notify_finished();
         }
-        policy_->notify_finished(tid);
+        {
+            std::lock_guard<std::mutex> g(mutex_);
+            policy_->notify_finished(tid);
+            if (idle_threads_ > 0) workers_cv_.notify_one();
+        }
       }
     }
 

@@ -22,14 +22,19 @@
 #include "input_nodes.hpp"
 #include "transfer_nodes.hpp"
 #include "../../initializator/initializators.hpp"
-#ifndef ZNN_DFS_TASK_SCHEDULER
-#include "../../utils/priority_policy.hpp"
-typedef znn::v4::priority_policy policy;
-#else
+#include "../helpers.hpp"
+
+// TODO(vlad17) wrap each in namespace for cleanliness
+#ifdef ZNN_DFS_TASK_SCHEDULER
 #include "../../utils/dfs_policy.hpp"
 typedef znn::v4::dfs_policy policy;
+#elif 0//ZNN_XEON_PHI
+#include "../../utils/cache_policy.hpp"
+typedef znn::v4::cache_policy policy;
+#else
+#include "../../utils/priority_policy.hpp"
+typedef znn::v4::priority_policy policy;
 #endif
-#include "../helpers.hpp"
 
 #include <map>
 #include <zi/time.hpp>
