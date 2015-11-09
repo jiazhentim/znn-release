@@ -2,7 +2,6 @@
 #scl enable devtoolset-2 bash
 module add boost
 module add intel
-module add intel-mkl
 icc \
     -std=c++11 \
     $1.cpp \
@@ -15,4 +14,4 @@ icc \
     -DZNN_USE_MKL_NATIVE_FFT \
     -DZNN_USE_MKL_DIRECT_CONV \
     -DZNN_DONT_CACHE_FFTS \
-    -lpthread -lrt -o $1 -mkl=sequential -static-intel -ljemalloc
+    -lpthread -lrt -o $1 -mkl=sequential -static-intel -ljemalloc -ggdb
