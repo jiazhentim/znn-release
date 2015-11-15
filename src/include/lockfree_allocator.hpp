@@ -31,22 +31,14 @@ namespace znn { namespace v4 { namespace detail {
 
 inline void* znn_malloc(size_t s)
 {
-#ifdef ZNN_XEON_PHI
-    void* r = mkl_malloc(s,8);
-#else
     void* r = malloc(s);
-#endif
     if ( !r ) throw std::bad_alloc();
     return r;
 }
 
 inline void znn_free(void* ptr)
 {
-#ifdef ZNN_XEON_PHI
-    mkl_free(ptr);
-#else
     free(ptr);
-#endif
 }
 
 
