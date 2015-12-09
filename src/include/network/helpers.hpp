@@ -92,7 +92,7 @@ inline std::pair<inout_t,inout_t> generate_inout( size_t n, Net const & net )
 template<typename C>
 std::pair<double, double> measured( C const & c )
 {
-    for ( auto a: c ) std::cout << a << "\n";
+    //for ( auto a: c ) std::cout << a << "\n";
     double mean   = std::accumulate(c.begin(), c.end(), 0.0) / c.size();
     double sqsum  = std::inner_product(c.begin(), c.end(), c.begin(), 0.0);
     double stderr = std::sqrt((sqsum/c.size() - mean*mean) / c.size());
