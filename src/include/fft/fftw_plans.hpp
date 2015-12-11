@@ -160,7 +160,7 @@ fft_plans_impl& fft_plans =
 
 }} // namespace znn::v4
 
-//#undef FFT_DESTROY_PLAN
+#undef FFT_DESTROY_PLAN
 #undef FFT_CLEANUP
 #undef FFT_PLAN_R2C
 #undef FFT_PLAN_C2R
