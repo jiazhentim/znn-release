@@ -43,8 +43,8 @@ cubevec deepcpy(const cubevec& x) {
 }
 
 template<typename F, typename G>
-static std::pair<double, double> bench(cubevec vec, F fwd, G bwd,
-                                       int rounds) {
+static std::pair<double, double> bench(cubevec vec, const F& fwd,
+                                       const G& bwd, int rounds) {
     // Warmup
     auto t = fwd(std::move(vec[0]));
     vec[0] = bwd(std::move(t));
@@ -155,7 +155,7 @@ struct fwd_transform {
         fftwf_destroy_plan(yzfft);
         fftwf_destroy_plan(xfft);
     }
-    cube_p<complex> operator()(cube_p<real>&& cube_real) {
+    cube_p<complex> operator()(cube_p<real>&& cube_real) const {
         auto real_data = cube_real->data();
         auto asize = fft_complex_size(*cube_real);
         auto csize = asize;
@@ -174,44 +174,71 @@ struct fwd_transform {
     }
 };
 
-// TODO correctness
-
-/*struct bwd_transform {
-    fftplanptr yzfft, zfft;
+struct bwd_transform {
     int x, y, z;
-    bwd_transform(int x, int y, int z) {
-        x = x; y = y; z = z;
-        yzfft = make2dplan(y, z, false);
-        zfft = make1dplan(x, false);
-    }
-    cube_p<real> operator()(cube_p<complex>&& transpose_cube) {
-        auto transpose_data = transpose>data();
-        auto complex_cube = get_cube<complex>(fft_complex_size(*cube_real));
-        auto complex_data = reinterpret_cast<fft_complex*>(complex_cube->data());
-        // TODO don't rely on x y z but array views
-        // TODO try out-of-place FFT to transpose
-        for (int i = 0; i < x; ++i) {
-            fftwf_execute_dft_r2c(yzfft.get(), real_data + i * y * z,
-                                  complex_data + i * y * z);
-        }
-        auto csize = size(*complex_cube);
-        vec3i tsize = {csize[1], csize[2], csize[0]};
-        auto transpose_cube = get_cube<complex>(tsize);
-        auto transpose_data = reinterpret_cast<fft_complex*>(transpose_cube->
-                                                             data());
-        for (int i = 0; i < tsize[0]; ++i) {
-            xztranspose(csize[0], csize[1], csize[2], complex_data, i,
-                        transpose_data);
-            for (int j = 0; j < tsize[1]; ++j) {
-                auto ptr = transpose_data
-                    + i * tsize[1] * tsize[2] + j * tsize[2];
-                fftwf_execute_dft(zfft.get(), ptr, ptr);
-            }
-        }
+    fftwf_plan yzfft, xfft;
+    bwd_transform(vec3i s)
+        : x(s[0]), y(s[1]), z(s[2]) {
+        auto tru_size = fft_complex_size(s);
+        auto pad_size = tru_size;
+        padit(pad_size[2]);
+        auto tra_size = vec3i(tru_size[1], tru_size[2], tru_size[0]);
+        padit(tra_size[2]);
+        padit(s[2]);
 
-        return transpose_cube;
+        auto in = get_cube<complex>(tra_size);
+        auto pad = get_cube<complex>(pad_size);
+        auto out = get_cube<real>(s);
+        auto iptr = reinterpret_cast<fftwf_complex*>(in->data());
+        auto pptr = reinterpret_cast<fftwf_complex*>(pad->data());
+        auto optr = out->data();
+
+        int rank = 1;
+        int dims1[] = {x};
+        int howmany = tra_size[0] * tra_size[1];
+        int idist = tra_size[2];
+        int odist = 1;
+        int istride = 1;
+        int ostride = pad_size[1] * pad_size[2];
+        xfft = fftwf_plan_many_dft(rank, dims1, howmany, iptr, NULL, istride,
+                                   idist, pptr, NULL, ostride, odist,
+                                   FFTW_BACKWARD, ZNN_FFTW_PLANNING_MODE);
+
+        rank = 2;
+        int dims2[] = {y, z};
+        howmany = x;
+        idist = pad_size[1] * pad_size[2];
+        odist = s[1] * s[2];
+        istride = 1;
+        ostride = 1;
+        yzfft = fftwf_plan_many_dft_c2r(rank, dims2, howmany, pptr, NULL,
+                                        istride, idist, optr, NULL, ostride,
+                                        odist, ZNN_FFTW_PLANNING_MODE);
     }
-    };*/
+    ~bwd_transform() {
+        fftwf_destroy_plan(yzfft);
+        fftwf_destroy_plan(xfft);
+    }
+    cube_p<real> operator()(cube_p<complex>&& cube_transpose) const {
+        auto transpose_data =
+            reinterpret_cast<fftwf_complex*>(cube_transpose->data());
+        auto asize = fft_complex_size(vec3i(x, y, z));
+        auto csize = asize;
+        padit(csize[2]);
+        auto complex_cube = get_cube<complex>(csize);
+        auto complex_data =
+            reinterpret_cast<fftwf_complex*>(complex_cube->data());
+        fftwf_execute_dft(xfft, transpose_data, complex_data);
+        vec3i rsize(x, y, z);
+        padit(rsize[2]);
+        auto real_cube = get_cube<real>(rsize);
+        auto real_data = real_cube->data();
+        fftwf_execute_dft_c2r(yzfft, transpose_data, real_data);
+        return real_cube;
+    }
+};
+
+// TODO correctness
 
 int main(int argc, char** argv)
 {
@@ -239,43 +266,31 @@ int main(int argc, char** argv)
     auto bwd = [&](cube_p<complex>&& x) {
         return fft.backward(std::move(x));
     };
-    //    auto m = bench(deepcpy(vec), fwd, bwd, rounds);
-    //std::cout << "LONE-FFTW Average Forward/Backward: " << m.first * 1000
-    //<< " +/- " << m.second * 1000 << " ms\n";
-
-    fwd_transform fwd2(vec3i(x, y, z));
-    auto v1 = deepcpy(vec);
-    double t1 = 0;
-    fwd(std::move(vec[0]));
-    zi::wall_timer wt; wt.reset();
-    for (int i = 0; i < v1.size(); ++i) {
-        if (argv[6][0] == 'f')
-            fwd(std::move(v1[i]));
-        else if (argv[6][0] == 't')
-            fwd2(std::move(v1[i]));
-        else {
-            std::cerr << "UNKNOWN TYPE " << argv[6] << std::endl;
-            return 1;
-        }
-        t1 += wt.lap<double>();
-    }
-
-    const char* name = "X";
-    switch(argv[6][0]) {
-    case 'f': name = "3DFFTW-ORMKL-only"; break;
-    case 't': name = "2DFFTW+1DFFTW-out-of-place"; break;
-    }
-
-    printf("%30s %6f\n", name, t1);
 
     /*
+    if (argv[6][0] == 'f') {
+        auto m = bench(vec, fwd, bwd, rounds);
+        std::cout << "3D FFTW Average Forward/Backward: " << m.first * 1000
+                  << " +/- " << m.second * 1000 << " ms\n";
+    } else {
+        fwd_transform fwd2(vec3i(x, y, z));
+        bwd_transform bwd2(vec3i(x, y, z));
+        auto m = bench(vec, fwd2, bwd2, rounds);
+        std::cout << "TR FFTW Average Forward/Backward: " << m.first * 1000
+                  << " +/- " << m.second * 1000 << " ms\n";
+    }
+    */
+
+    fwd_transform fwd2(vec3i(x, y, z));
+
     auto s1 = get_copy(*vec[0]);
     auto s2 = get_copy(*s1);
-    auto r1 = fwd2(std::move(s1));
-    auto r2 = fwd(std::move(s2));
+    auto r1 = fwd(std::move(s1));
+    auto r2 = fwd2(std::move(s2));
+    std::cout << size(*r1) << std::endl;
     for (int i = 0; i < size(*r1)[0]; ++i) {
-        for (int j = 0; j < size(*r1)[0]; ++j) {
-            for (int k = 0; k < size(*r1)[0]; ++k) {
+        for (int j = 0; j < size(*r1)[1]; ++j) {
+            for (int k = 0; k < size(*r1)[2]; ++k) {
                 auto c1 = (*r1)[i][j][k];
                 auto c2 = (*r2)[j][k][i]; // intentional
                 if (c1.real() != c2.real()) {
@@ -285,10 +300,10 @@ int main(int argc, char** argv)
                 if (c1.imag() != c2.imag()) {
                     printf("Im %f != %f @ %d %d %d\n", c1.imag(), c2.imag(),
                            i, j, k);
-                           }
+                }
             }
         }
-        }*/
+    }
 
     //auto bwd2 = make_bwd(x, iy, z);
     //m = bench(vec, std::move(fwd2), std::move(bwd2), rounds);
@@ -329,5 +344,6 @@ int main(int argc, char** argv)
     printf("transposed\n");
     for (int i = 1; i < 3; ++i)
         xztranspose(2, 3, 4, im234, i, im342);
-    pr((float*) im342, 3, 4, 2); */
+    pr((float*) im342, 3, 4, 2);
+    */
 }
