@@ -29,8 +29,6 @@
 #include <fstream>
 #include <fftw3.h>
 
-#include <mkl_trans.h>
-
 using namespace znn::v4;
 
 typedef float real;
@@ -75,26 +73,6 @@ static std::pair<double, double> bench(cubevec vec, const F& fwd,
     }
 
     return measured(cat);
-}
-
-// complex x-z transpose, assumes complex dims x y z. Only tranposes
-// xz plane at yaxis into yzx.
-static void xztranspose(int x, int y, int z, fftwf_complex* a, int yaxis,
-                        fftwf_complex* yzx) {
-    // No idea why MKL_Complex version doesn't work
-    auto src = reinterpret_cast</*MKL_Complex8*/double*>(a + z * yaxis);
-    auto dst = reinterpret_cast</*MKL_Complex8**/double*>(yzx + z * x * yaxis);
-
-    // float-based complex transpose
-    mkl_domatcopy('R', // row major
-                  'T', // transpose
-                  x, // rows
-                  z, // cols
-                  1.0/*{ .real = 1.0, .imag = 1.0 }*/, // alpha
-                  src, // xz-plane slice
-                  y * z, // row stride
-                  dst, // destination zx plane
-                  x); // transposed row stride
 }
 
 enum {PAD_TO = 16};
@@ -238,8 +216,6 @@ struct bwd_transform {
     }
 };
 
-// TODO correctness
-
 int main(int argc, char** argv)
 {
     if (argc != 7) {
@@ -267,7 +243,6 @@ int main(int argc, char** argv)
         return fft.backward(std::move(x));
     };
 
-    /*
     if (argv[6][0] == 'f') {
         auto m = bench(vec, fwd, bwd, rounds);
         std::cout << "3D FFTW Average Forward/Backward: " << m.first * 1000
@@ -279,8 +254,9 @@ int main(int argc, char** argv)
         std::cout << "TR FFTW Average Forward/Backward: " << m.first * 1000
                   << " +/- " << m.second * 1000 << " ms\n";
     }
-    */
 
+    /*
+    // Correctness test
     fwd_transform fwd2(vec3i(x, y, z));
 
     auto s1 = get_copy(*vec[0]);
@@ -288,6 +264,7 @@ int main(int argc, char** argv)
     auto r1 = fwd(std::move(s1));
     auto r2 = fwd2(std::move(s2));
     std::cout << size(*r1) << std::endl;
+    std::cout << size(*r2) << std::endl;
     for (int i = 0; i < size(*r1)[0]; ++i) {
         for (int j = 0; j < size(*r1)[1]; ++j) {
             for (int k = 0; k < size(*r1)[2]; ++k) {
@@ -303,47 +280,30 @@ int main(int argc, char** argv)
                 }
             }
         }
-    }
-
-    //auto bwd2 = make_bwd(x, iy, z);
-    //m = bench(vec, std::move(fwd2), std::move(bwd2), rounds);
-    //std::cout << "TRANSPOSE Average Forward/Backward: " << m.first * 1000
-    //<< " +/- " << m.second * 1000 << " ms\n";
-
-    // complex dims 2x3x4 correspond to real dims 2x3x6
-    /*    fft_complex im234[] = {
-        {0, 0}, {0, 1}, {0, 2}, {0, 3},
-        {1, 0}, {1, 1}, {1, 2}, {1, 3},
-        {2, 0}, {2, 1}, {2, 2}, {2, 3},
-
-        {0, -10}, {0, -1}, {0, -2}, {0, -3},
-        {1, -10}, {1, -1}, {1, -2}, {1, -3},
-        {2, -10}, {2, -1}, {2, -2}, {2, -3}};
-
-    auto pr = [](float* a, int x, int y, int z) {
-        int ctr = 0;
-
-        printf("%dx%dx%d array\n", x, y, z);
-        for (int k = 0; k < x; ++k) {
-            for (int i = 0; i < y; ++i) {
-                for (int j = 0; j < z; ++j) {
-                    printf("%f(%f) ", a[ctr], a[ctr+1]);
-                    ctr += 2;
-                }
-                printf("\n");
-            }
-            printf("\n");
-        }
-    };
-
-    pr((float*) im234, 2, 3, 4);
-    fft_complex im342[sizeof(im234) / sizeof(*im234)] = {0};
-    xztranspose(2, 3, 4, im234, 0, im342);
-    printf("transposed only 0\n");
-    pr((float*) im234, 4, 3, 2);
-    printf("transposed\n");
-    for (int i = 1; i < 3; ++i)
-        xztranspose(2, 3, 4, im234, i, im342);
-    pr((float*) im342, 3, 4, 2);
-    */
+        }*/
 }
+/*
+
+  #include <mkl_trans.h>
+
+
+// complex x-z transpose, assumes complex dims x y z. Only tranposes
+// xz plane at yaxis into yzx.
+static void xztranspose(int x, int y, int z, fftwf_complex* a, int yaxis,
+                        fftwf_complex* yzx) {
+    // No idea why MKL_Complex version doesn't work
+    auto src = reinterpret_cast<double*>(a + z * yaxis);
+    auto dst = reinterpret_cast<double*>(yzx + z * x * yaxis);
+
+    // float-based complex transpose
+    mkl_domatcopy('R', // row major
+                  'T', // transpose
+                  x, // rows
+                  z, // cols
+                  1.0/*{ .real = 1.0, .imag = 1.0 }, // alpha
+                  src, // xz-plane slice
+                  y * z, // row stride
+                  dst, // destination zx plane
+                  x); // transposed row stride
+}
+*/
