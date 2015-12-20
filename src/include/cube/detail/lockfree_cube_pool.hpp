@@ -184,7 +184,7 @@ public:
 
         void*    mem  = buckets_[bucket].get();
         T*       data = __offset_cast<T>(mem, __znn_aligned_size<cube<T>>::value);
-        assert(data & __ZNN_ALIGN == 0);
+        ZI_ASSERT((reinterpret_cast<uintptr_t>(data) & __ZNN_ALIGN) == 0);
         cube<T>* c    = new (mem) cube<T>(p, s, data);
 
         return std::shared_ptr<cube<T>>(c,[this,bucket](cube<T>* c) {

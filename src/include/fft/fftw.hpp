@@ -129,13 +129,14 @@ public:
                                  reinterpret_cast<fft_complex*>(in.data()),
                                  reinterpret_cast<real*>(out.data()));
             ZNN_MEASURE_FFT_END();
-        }*/
+            }*/  // TODO add various size asserts
 
         cube_p<complex> forward( cube_p<real>&& in )
         {
           ZNN_MEASURE_FFT_START();
           auto ret = (*forward_plan)(std::forward<cube_p<real>>(in));
           ZNN_MEASURE_FFT_END();
+          return ret;
         }
 
         cube_p<complex> forward_pad( const ccube_p<real>& in )
@@ -152,6 +153,7 @@ public:
           ZNN_MEASURE_FFT_START();
           auto ret = (*backward_plan)(std::forward<cube_p<complex>>(in));
           ZNN_MEASURE_FFT_END();
+          return ret;
         }
     };
 

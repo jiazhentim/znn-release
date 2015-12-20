@@ -436,11 +436,12 @@ inline cube_p<T> sparse_implode( cube<T> const & r,
 
 inline cube_p<real> pad_zeros( const cube<real>& v, vec3i const & s )
 {
+
     cube_p<real> r = get_cube<real>(s);
 
-    std::size_t ox = size(v)[0];
-    std::size_t oy = size(v)[1];
-    std::size_t oz = size(v)[2];
+    std::size_t ox = v.shape()[0];
+    std::size_t oy = v.shape()[1];
+    std::size_t oz = v.shape()[2];
 
     if ( size(v) != s ) fill(*r, 0);
 
@@ -480,10 +481,13 @@ inline cube_p<T> crop_right( cube<T> const & c, vec3i const & s )
 {
     vec3i off = size(c) - s;
     auto ret = get_cube<T>(s);
-    *ret = c[indices
-             [range(off[0],s[0]+off[0])]
-             [range(off[1],s[1]+off[1])]
-             [range(off[2],s[2]+off[2])]];
+    (*ret)[indices
+           [range(0, s[0])]
+           [range(0, s[1])]
+           [range(0, s[2])]] = c[indices
+                                 [range(off[0],s[0]+off[0])]
+                                 [range(off[1],s[1]+off[1])]
+                                 [range(off[2],s[2]+off[2])]];
     return ret;
 }
 
