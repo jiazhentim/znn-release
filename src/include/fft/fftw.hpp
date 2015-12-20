@@ -34,7 +34,7 @@
 #endif
 
 #ifdef ZNN_USE_FLOATS
-#  define FFT_EXECUTE_DFT_R2C fftwf_execute_dft_r2c
+#  define FFT_EXECUTE_DFT_R2C
 #  define FFT_EXECUTE_DFT_C2R fftwf_execute_dft_c2r
 #else
 #  define FFT_EXECUTE_DFT_R2C fftw_execute_dft_r2c
@@ -94,8 +94,8 @@ public:
     {
     private:
         vec3i    sz           ;
-        fft_plan forward_plan ;
-        fft_plan backward_plan;
+        fft_plan_fwd* forward_plan ;
+        fft_plan_bwd* backward_plan;
 
     public:
         transformer(const vec3i& s)
@@ -104,10 +104,11 @@ public:
             , backward_plan(fft_plans.get_backward(s))
         {}
 
+      /*
         void forward( cube<real>& in,
                       cube<complex>& out )
         {
-            ZI_ASSERT(size(out)==fft_complex_size(in));
+            ZI_ASSERT(size(out)==transformed_size(in));
             ZI_ASSERT(size(in)==sz);
 
             ZNN_MEASURE_FFT_START();
@@ -120,7 +121,7 @@ public:
         void backward( cube<complex>& in,
                        cube<real>& out )
         {
-            ZI_ASSERT(size(in)==fft_complex_size(out));
+            ZI_ASSERT(size(in)==transformed_size(out));
             ZI_ASSERT(size(out)==sz);
 
             ZNN_MEASURE_FFT_START();
@@ -128,40 +129,42 @@ public:
                                  reinterpret_cast<fft_complex*>(in.data()),
                                  reinterpret_cast<real*>(out.data()));
             ZNN_MEASURE_FFT_END();
-        }
+        }*/
 
         cube_p<complex> forward( cube_p<real>&& in )
         {
-            cube_p<complex> ret = get_cube<complex>(fft_complex_size(*in));
-            forward( *in, *ret );
-            return ret;
+          ZNN_MEASURE_FFT_START();
+          auto ret = (*forward_plan)(std::forward<cube_p<real>>(in));
+          ZNN_MEASURE_FFT_END();
         }
 
         cube_p<complex> forward_pad( const ccube_p<real>& in )
         {
             cube_p<real> pin = pad_zeros(*in, sz);
-            return forward(std::move(pin));
+            ZNN_MEASURE_FFT_START();
+            auto ret = (*forward_plan)(std::forward<cube_p<real>>(pin));
+            ZNN_MEASURE_FFT_END();
+            return ret;
         }
 
         cube_p<real> backward( cube_p<complex>&& in )
         {
-            cube_p<real> ret = get_cube<real>(sz);
-            backward( *in, *ret );
-            return ret;
+          ZNN_MEASURE_FFT_START();
+          auto ret = (*backward_plan)(std::forward<cube_p<complex>>(in));
+          ZNN_MEASURE_FFT_END();
         }
     };
 
 
 public:
+  /*
     static void forward( cube<real>& in,
                          cube<complex>& out )
     {
-      ZI_ASSERT(size(in)[0]==size(out)[0]);
-      ZI_ASSERT(size(in)[1]==size(out)[1]);
-      ZI_ASSERT((size(in)[2]/2+1)==size(out)[2]);
+      ZI_ASSERT(size(transformed_size(out)) == size(in));
 
-        fft_plan plan = fft_plans.get_forward(
-                                              vec3i(size(in)[0],size(in)[1],size(in)[2]));
+      auto plan = fft_plans.get_forward(
+                                        vec3i(size(in)[0],size(in)[1],size(in)[2]));
 
         ZNN_MEASURE_FFT_START();
         FFT_EXECUTE_DFT_R2C(plan,
@@ -173,11 +176,9 @@ public:
     static void backward( cube<complex>& in,
                           cube<real>& out )
     {
-      ZI_ASSERT(size(in)[0]==size(out)[0]);
-      ZI_ASSERT(size(in)[1]==size(out)[1]);
-      ZI_ASSERT((size(out)[2]/2+1)==size(in)[2]);
+      ZI_ASSERT(size(transformed_size(out)) == size(in));
 
-        fft_plan plan = fft_plans.get_backward(
+      auto plan = fft_plans.get_backward(
                                                vec3i(size(out)[0],size(out)[1],size(out)[2]));
 
         ZNN_MEASURE_FFT_START();
@@ -185,29 +186,25 @@ public:
                              reinterpret_cast<fft_complex*>(in.data()),
                              reinterpret_cast<real*>(out.data()));
         ZNN_MEASURE_FFT_END();
-    }
+    }*/
 
-    static cube_p<complex> forward( cube_p<real>&& in )
-    {
-        cube_p<complex> ret = get_cube<complex>(fft_complex_size(*in));
-        fftw::forward( *in, *ret );
-        return ret;
-    }
+        static cube_p<complex> forward( cube_p<real>&& in )
+        {
+          transformer t(size(*in));
+          return t.forward(std::forward<cube_p<real>>(in));
+        }
 
-    static cube_p<real> backward( cube_p<complex>&& in, const vec3i& s )
-    {
-        cube_p<real> ret = get_cube<real>(s);
-        fftw::backward( *in, *ret );
-        return ret;
-    }
+  static cube_p<complex> forward_pad( const ccube_p<real>& in, const vec3i& s)
+        {
+          transformer t(s);
+          return t.forward_pad(in);
+        }
 
-    static cube_p<complex> forward_pad( const ccube_p<real>& in,
-                                        const vec3i& pad )
-    {
-        cube_p<real> pin = pad_zeros(*in, pad);
-        return fftw::forward(std::move(pin));
-    }
-
+        static cube_p<real> backward( cube_p<complex>&& in, const vec3i& s)
+        {
+          transformer t(s);
+          return t.backward(std::forward<cube_p<complex>>(in));
+        }
 }; // class fftw
 
 }} // namespace znn::v4

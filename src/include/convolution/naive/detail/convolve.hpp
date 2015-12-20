@@ -126,7 +126,7 @@ inline void pure_convolve_flipped( cube<T> const & a,
 template< typename T >
 inline void pure_convolve_inverse_add( cube<T> const & a,
                                        cube<T> const & b,
-                                       cube<T> & r) noexcept
+                                      cube<T> & r) noexcept
 {
   size_t ax = size(a)[0];
   size_t ay = size(a)[1];

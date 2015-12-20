@@ -18,6 +18,7 @@
 #pragma once
 
 #include "fftmkl_plans.hpp"
+#error "unsupported with padded size"
 
 #include <zi/time.hpp>
 
