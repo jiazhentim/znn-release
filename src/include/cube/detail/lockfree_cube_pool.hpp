@@ -55,10 +55,13 @@ template <typename T> struct cube: boost::multi_array_ref<T,3>
 private:
     using base_type =  boost::multi_array_ref<T,3>;
 
+    vec3i s;
+
 public:
-    explicit cube(const vec3i& s, T* data)
-        : boost::multi_array_ref<T,3>(data,extents[s[0]][s[1]][s[2]])
+    explicit cube(const vec3i& p, const vec3i& s, T* data)
+        : boost::multi_array_ref<T,3>(data,extents[p[0]][p[1]][p[2]])
     {
+        this->s = s;
     }
 
     ~cube()
@@ -69,6 +72,7 @@ public:
     cube& operator=(const cube& x)
     {
         base_type::operator=(static_cast<base_type>(x));
+        s = x.s;
         return *this;
     }
 
@@ -76,9 +80,11 @@ public:
     cube& operator=(const Array& x)
     {
         base_type::operator=(x);
+        s = vec3i(x.shape()[0], x.shape()[1], x.shape()[2]);
         return *this;
     }
 
+    const vec3i& unpadded_size() const { return s; }
 };
 
 
@@ -169,18 +175,31 @@ public:
 public:
     std::shared_ptr<cube<T>> get( const vec3i& s )
     {
+        auto p = s;
+        /* Secretly allocate more space so that the last dimension is padded */
+        p[2] = pad(s[2]);
+        const auto raw_data_size = p[0] * p[1] * p[2] * sizeof (T);
         size_t bucket = 64 - __builtin_clzl( __znn_aligned_size<cube<T>>::value
-                                             + s[0]*s[1]*s[2]*sizeof(T) - 1 );
+                                             + raw_data_size - 1 );
 
         void*    mem  = buckets_[bucket].get();
         T*       data = __offset_cast<T>(mem, __znn_aligned_size<cube<T>>::value);
-        cube<T>* c    = new (mem) cube<T>(s,data);
+        assert(data & __ZNN_ALIGN == 0);
+        cube<T>* c    = new (mem) cube<T>(p, s, data);
 
         return std::shared_ptr<cube<T>>(c,[this,bucket](cube<T>* c) {
                 this->buckets_[bucket].return_memory(c);
             }, allocator<cube<T>>());
     }
 
+private:
+    static int pad(int x) {
+        x *= sizeof (T);
+        int rem = x & __ZNN_ALIGN;
+        int div = x & ~__ZNN_ALIGN;
+        div += rem == 0 ? 0 : __ZNN_ALIGN + 1;
+        return div / sizeof (T);
+    }
 }; // single_type_cube_pool
 
 

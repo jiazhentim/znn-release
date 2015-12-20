@@ -38,9 +38,9 @@ std::basic_ostream< CharT, Traits >&
 operator<<( ::std::basic_ostream< CharT, Traits >& os,
             cube<T> const & a )
 {
-    std::size_t rx = a.shape()[0];
-    std::size_t ry = a.shape()[1];
-    std::size_t rz = a.shape()[2];
+    std::size_t rx = size(a)[0];
+    std::size_t ry = size(a)[1];
+    std::size_t rz = size(a)[2];
 
     for ( std::size_t z = 0; z < rz; ++z )
     {
@@ -438,9 +438,9 @@ inline cube_p<real> pad_zeros( const cube<real>& v, vec3i const & s )
 {
     cube_p<real> r = get_cube<real>(s);
 
-    std::size_t ox = v.shape()[0];
-    std::size_t oy = v.shape()[1];
-    std::size_t oz = v.shape()[2];
+    std::size_t ox = size(v)[0];
+    std::size_t oy = size(v)[1];
+    std::size_t oz = size(v)[2];
 
     if ( size(v) != s ) fill(*r, 0);
 
@@ -522,9 +522,9 @@ inline cube_p<T> mirror_boundary( cube<T> const & c,
     STRONG_ASSERT(rf[1] % 2);
     STRONG_ASSERT(rf[2] % 2);
 
-    long_t vx = c.shape()[0];
-    long_t vy = c.shape()[1];
-    long_t vz = c.shape()[2];
+    long_t vx = size(c)[0];
+    long_t vy = size(c)[1];
+    long_t vz = size(c)[2];
 
     long_t mx = rf[0]/2;
     long_t my = rf[1]/2;

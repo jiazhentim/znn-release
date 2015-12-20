@@ -53,7 +53,7 @@ template <typename T> using cqube_p = std::shared_ptr<cqube<T>>;
 template <typename T>
 inline vec3i size( cube<T> const & a )
 {
-    return vec3i(a.shape()[0],a.shape()[1],a.shape()[2]);
+   return a.unpadded_size();
 };
 
 template <typename T>

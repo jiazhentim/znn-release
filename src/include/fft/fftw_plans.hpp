@@ -110,6 +110,8 @@ public:
         zi::wall_timer wt; wt.reset();
 
         auto in  = get_cube<real>(s);
+        std::cout << "size: " << size(*in) << " shape " << in->shape()[0]
+                  << " " << in->shape()[1] << " " << in->shape()[2] << "\n";
         auto out = get_cube<complex>(fft_complex_size(s));
 
         ret = FFT_PLAN_R2C

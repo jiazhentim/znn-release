@@ -37,21 +37,21 @@ inline void convolve_add( cube<T> const & a,
         return;
     }
 
-    size_t ax = a.shape()[0];
-    size_t ay = a.shape()[1];
-    size_t az = a.shape()[2];
+    size_t ax = size(a)[0];
+    size_t ay = size(a)[1];
+    size_t az = size(a)[2];
 
-    size_t bx = b.shape()[0];
-    size_t by = b.shape()[1];
-    size_t bz = b.shape()[2];
+    size_t bx = size(b)[0];
+    size_t by = size(b)[1];
+    size_t bz = size(b)[2];
 
     size_t rx = ax - bx + 1;
     size_t ry = ay - by + 1;
     size_t rz = az - bz + 1;
 
-    ZI_ASSERT(r.shape()[0]==rx);
-    ZI_ASSERT(r.shape()[1]==ry);
-    ZI_ASSERT(r.shape()[2]==rz);
+    ZI_ASSERT(size(r)[0]==rx);
+    ZI_ASSERT(size(r)[1]==ry);
+    ZI_ASSERT(size(r)[2]==rz);
 
     for ( size_t x = 0; x < rx; ++x )
         for ( size_t y = 0; y < ry; ++y )
@@ -106,21 +106,21 @@ inline void convolve_flipped_add( cube<T> const & a,
         return;
     }
 
-    size_t ax = a.shape()[0];
-    size_t ay = a.shape()[1];
-    size_t az = a.shape()[2];
+    size_t ax = size(a)[0];
+    size_t ay = size(a)[1];
+    size_t az = size(a)[2];
 
-    size_t bx = b.shape()[0];
-    size_t by = b.shape()[1];
-    size_t bz = b.shape()[2];
+    size_t bx = size(b)[0];
+    size_t by = size(b)[1];
+    size_t bz = size(b)[2];
 
     size_t rx = ax - bx + 1;
     size_t ry = ay - by + 1;
     size_t rz = az - bz + 1;
 
-    ZI_ASSERT(r.shape()[0]==rx);
-    ZI_ASSERT(r.shape()[1]==ry);
-    ZI_ASSERT(r.shape()[2]==rz);
+    ZI_ASSERT(size(r)[0]==rx);
+    ZI_ASSERT(size(r)[1]==ry);
+    ZI_ASSERT(size(r)[2]==rz);
 
     for ( size_t x = 0; x < rx; ++x )
         for ( size_t y = 0; y < ry; ++y )
@@ -179,17 +179,17 @@ inline void convolve_inverse_add( cube<T> const & a,
         return;
     }
 
-    size_t ax = a.shape()[0];
-    size_t ay = a.shape()[1];
-    size_t az = a.shape()[2];
+    size_t ax = size(a)[0];
+    size_t ay = size(a)[1];
+    size_t az = size(a)[2];
 
-    size_t bx = b.shape()[0];
-    size_t by = b.shape()[1];
-    size_t bz = b.shape()[2];
+    size_t bx = size(b)[0];
+    size_t by = size(b)[1];
+    size_t bz = size(b)[2];
 
-    ZI_ASSERT(r.shape()[0]==ax + bx - 1);
-    ZI_ASSERT(r.shape()[1]==ay + by - 1);
-    ZI_ASSERT(r.shape()[2]==az + bz - 1);
+    ZI_ASSERT(size(r)[0]==ax + bx - 1);
+    ZI_ASSERT(size(r)[1]==ay + by - 1);
+    ZI_ASSERT(size(r)[2]==az + bz - 1);
 
     for ( size_t dx = 0; dx < bx; ++dx )
         for ( size_t dy = 0; dy < by; ++dy )

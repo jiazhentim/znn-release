@@ -148,12 +148,12 @@ public:
     static void forward( cube<real>& in,
                          cube<complex>& out )
     {
-        ZI_ASSERT(in.shape()[0]==out.shape()[0]);
-        ZI_ASSERT(in.shape()[1]==out.shape()[1]);
-        ZI_ASSERT((in.shape()[2]/2+1)==out.shape()[2]);
+      ZI_ASSERT(size(in)[0]==size(out)[0]);
+      ZI_ASSERT(size(in)[1]==size(out)[1]);
+      ZI_ASSERT((size(in)[2]/2+1)==size(out)[2]);
 
         fft_plan plan = fft_plans.get_forward(
-            vec3i(in.shape()[0],in.shape()[1],in.shape()[2]));
+                                              vec3i(size(in)[0],size(in)[1],size(in)[2]));
 
         MKL_LONG status;
 
@@ -171,12 +171,12 @@ public:
     static void backward( cube<complex>& in,
                           cube<real>& out )
     {
-        ZI_ASSERT(in.shape()[0]==out.shape()[0]);
-        ZI_ASSERT(in.shape()[1]==out.shape()[1]);
-        ZI_ASSERT((out.shape()[2]/2+1)==in.shape()[2]);
+      ZI_ASSERT(size(in)[0]==size(out)[0]);
+      ZI_ASSERT(size(in)[1]==size(out)[1]);
+      ZI_ASSERT((size(out)[2]/2+1)==size(in)[2]);
 
         fft_plan plan = fft_plans.get_backward(
-            vec3i(out.shape()[0],out.shape()[1],out.shape()[2]));
+                                               vec3i(size(out)[0],size(out)[1],size(out)[2]));
 
         MKL_LONG status;
 

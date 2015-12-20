@@ -114,21 +114,21 @@ inline void convolve_sparse_flipped_add( cube<T> const & a,
         return;
     }
 
-    size_t ax = a.shape()[0];
-    size_t ay = a.shape()[1];
-    size_t az = a.shape()[2];
+    size_t ax = size(a)[0];
+    size_t ay = size(a)[1];
+    size_t az = size(a)[2];
 
-    size_t bx = b.shape()[0];
-    size_t by = b.shape()[1];
-    size_t bz = b.shape()[2];
+    size_t bx = size(b)[0];
+    size_t by = size(b)[1];
+    size_t bz = size(b)[2];
 
     size_t rx = (ax - bx) / s[0] + 1;
     size_t ry = (ay - by) / s[1] + 1;
     size_t rz = (az - bz) / s[2] + 1;
 
-    ZI_ASSERT(r.shape()[0]==rx);
-    ZI_ASSERT(r.shape()[1]==ry);
-    ZI_ASSERT(r.shape()[2]==rz);
+    ZI_ASSERT(size(r)[0]==rx);
+    ZI_ASSERT(size(r)[1]==ry);
+    ZI_ASSERT(size(r)[2]==rz);
 
     for ( size_t qx = 0, x = 0; qx < rx; ++qx, x += s[0] )
         for ( size_t qy = 0, y = 0; qy < ry; ++qy, y += s[1] )
